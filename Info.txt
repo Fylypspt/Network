@@ -1,0 +1,4 @@
+ASCII - binary to text
+-  7 bits, final one is always 0 (parity)
+
+byte - 00000000 (0-255)
