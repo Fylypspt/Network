@@ -1,6 +1,7 @@
 from cons import char_map, multiples, tick, maxBits
 from concurrent.futures import ThreadPoolExecutor
 import time
+import random
 
 testString = "Hey"
 recData = []
@@ -8,6 +9,21 @@ recData = []
 startSeq = [1,1,1,1,1,1,1,1]
 
 cable = 0
+
+def CreateBit(data):
+    print("--Bit Creation--")
+    if random.random() <= 0.05:
+        print("Noise")
+        if data == 0:
+            data = 1
+        else:
+            data = 0
+        print("--End Bit--")
+        return data
+    else:
+        print("Clean")
+        print("--End Bit--")
+        return data
 
 def binToDec(bin):
     #split into 8-bit blocks
@@ -43,6 +59,7 @@ def decToBin(dec): #!!!
 
 def ASCIIConv(info, work):
     if work == True:
+        print("Text to Binary")
         #text -> binary
         letters = list(info)
         finalBinary = []
@@ -66,10 +83,13 @@ def ASCIIConv(info, work):
         for letter in finalBinary:
             for bit in letter:
                 cleanBinary.append(bit)
-                    
+
+
+        print(f"{info} to {finalBinary}")            
         return cleanBinary
 
     else:
+        print("Binary to Text")
         #binary -> text
         dataL = []
         data = ""
@@ -85,15 +105,18 @@ def ASCIIConv(info, work):
         for letter in dataL:
             data += str(letter)
 
+        print(f"{info} to {data}")
         return data
 
 def startClock():
+    print("Clock - Init")
     global cable
     lastSeq = []
     time.sleep(tick / 2)
     data = []
 
     #state 0
+    print("Clock - State 0")
     while not (lastSeq == startSeq):
         time.sleep(tick)
         lastSeq.append(cable)
@@ -101,7 +124,9 @@ def startClock():
         #keep only the last 8
         if len(lastSeq) > 8:
             lastSeq.pop(0)
+    print(f"Clock - Sequence read: {lastSeq}")
 
+    print("Clock - State 1")
     #state 1
     SizeBinary = []
 
@@ -112,36 +137,50 @@ def startClock():
 
     size = binToDec(SizeBinary)[0]
 
+    print(f"Clock - Data size: {size}")
+
+    print("Clock - State 2")
     #state 2
     #read actual data
     for i in range(size*8):
         time.sleep(tick)
         data.append(cable)
 
+    print(f"Clock - Data: {data}")
     return data
     
 
 def sendData(data):
+    print("Sender - Init")
     global cable
 
     time.sleep(tick * 10) #testing silence
 
+
+    print("Sender - Sending")
     #start
     for bit in startSeq:
-        cable = bit
+        cable = CreateBit(bit)
         time.sleep(tick)
 
+    print(f"Sender - Sent StartSeq: {startSeq}")
+
+    print("Sender - Size")
     #size
     binarySize = decToBin(int(len(data)/8))
 
+    print(f"Sender - Sent Size: {binarySize}")
+
     for bit in binarySize:
-        cable = bit
+        cable = CreateBit(bit)
         time.sleep(tick)
 
+    print("Sender - Data")
     #data
     for bit in data:
-        cable = bit
+        cable = CreateBit(bit)
         time.sleep(tick)
+    print(f"Sender - Sent Data: {data}")
 
     #reset cable
     cable = 0
@@ -156,6 +195,7 @@ def transmit(data):
     return ASCIIConv(binary, False)
 
 def test():
+    print("Start")
     bin = ASCIIConv(testString, True)
     return transmit(bin)
     
