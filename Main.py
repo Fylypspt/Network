@@ -11,18 +11,18 @@ startSeq = [1,1,1,1,1,1,1,1]
 cable = 0
 
 def CreateBit(data):
-    print("--Bit Creation--")
+    #print("--Bit Creation--")
     if random.random() <= 0.05:
         print("Noise")
         if data == 0:
             data = 1
         else:
             data = 0
-        print("--End Bit--")
+        #print("--End Bit--")
         return data
     else:
         print("Clean")
-        print("--End Bit--")
+        #print("--End Bit--")
         return data
 
 def binToDec(bin):
@@ -80,13 +80,35 @@ def ASCIIConv(info, work):
             finalBinary.append(binaryResult)
     
         #flatten binary lists
-        for letter in finalBinary:
-            for bit in letter:
+        for byte in finalBinary:
+            for bit in byte:
                 cleanBinary.append(bit)
+        
+        print(f"{info} to {finalBinary}")
 
+        sublists = []
 
-        print(f"{info} to {finalBinary}")            
-        return cleanBinary
+        for i in range(0, len(cleanBinary), 8):
+            byte = cleanBinary[i : i + 8]
+            sublists.append(byte)
+
+        for byte in sublists:
+            parityCounter = 0
+            for bit in byte:
+                if bit == 1:
+                    parityCounter += 1
+            if parityCounter % 2 == 0:
+                byte.append(0)
+            else:
+                byte.append(1) 
+
+        final = []
+
+        for byte in sublists:
+            for bit in byte:
+                final.append(bit)
+              
+        return final
 
     else:
         print("Binary to Text")
@@ -142,20 +164,40 @@ def startClock():
     print("Clock - State 2")
     #state 2
     #read actual data
-    for i in range(size*8):
+    for i in range(size*9):
         time.sleep(tick)
         data.append(cable)
 
-    print(f"Clock - Data: {data}")
-    return data
-    
+    polishedData = []
+
+    for i in range(0, len(data), 9):
+        byte = data[i : i + 9]
+        polishedData.append(byte)
+
+    for i, byte in enumerate(polishedData):
+        parityCounter = 0
+        for bit in byte:
+            if bit == 1:
+                parityCounter += 1
+        if parityCounter % 2 == 0:
+            byte.pop(8)
+        else:
+            print(f"ERROR Parity Broken in byte {i}")
+
+    finalCleanBits = []
+
+    for byte in polishedData:
+        for bit in byte:
+            finalCleanBits.append(bit)
+
+    print(f"Clock - Data: {finalCleanBits}")
+    return finalCleanBits
 
 def sendData(data):
     print("Sender - Init")
     global cable
 
     time.sleep(tick * 10) #testing silence
-
 
     print("Sender - Sending")
     #start
@@ -167,7 +209,7 @@ def sendData(data):
 
     print("Sender - Size")
     #size
-    binarySize = decToBin(int(len(data)/8))
+    binarySize = decToBin(int(len(data)/9))
 
     print(f"Sender - Sent Size: {binarySize}")
 
