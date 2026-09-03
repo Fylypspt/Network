@@ -8,6 +8,9 @@ recData = []
 
 startSeq = [1,1,1,1,1,1,1,1]
 
+waitLimit = 100 #max ticks a state can waste before giving up on the frame
+maxTicks = 300 #test only, the protocol has no total limit
+
 cable = 0
 
 def CreateBit(data):
@@ -21,7 +24,7 @@ def CreateBit(data):
         #print("--End Bit--")
         return data
     else:
-        print("Clean")
+        #print("Clean")
         #print("--End Bit--")
         return data
 
@@ -57,141 +60,185 @@ def decToBin(dec): #!!!
             
     return binary
 
-def ASCIIConv(info, work):
-    if work == True:
-        print("Text to Binary")
-        #text -> binary
-        letters = list(info)
-        finalBinary = []
-        cleanBinary = []
+def textToBin(text):
+    print("Text to Binary")
+    #text -> binary
+    letters = list(text)
+    finalBinary = []
+    cleanBinary = []
 
-        for letter in letters:
-            decimal_num = char_map[letter]
-            binaryResult = []
-            
-            #convert char to 8-bit binary
-            for v in multiples:
-                if decimal_num >= v:
-                    binaryResult.append(1)
-                    decimal_num -= v
-                else:
-                    binaryResult.append(0)
+    for letter in letters:
+        decimal_num = char_map[letter]
+        binaryResult = []
 
-            finalBinary.append(binaryResult)
-    
-        #flatten binary lists
-        for byte in finalBinary:
-            for bit in byte:
-                cleanBinary.append(bit)
-        
-        print(f"{info} to {finalBinary}")
-
-        sublists = []
-
-        for i in range(0, len(cleanBinary), 8):
-            byte = cleanBinary[i : i + 8]
-            sublists.append(byte)
-
-        for byte in sublists:
-            parityCounter = 0
-            for bit in byte:
-                if bit == 1:
-                    parityCounter += 1
-            if parityCounter % 2 == 0:
-                byte.append(0)
+        #convert char to 8-bit binary
+        for v in multiples:
+            if decimal_num >= v:
+                binaryResult.append(1)
+                decimal_num -= v
             else:
-                byte.append(1) 
+                binaryResult.append(0)
 
-        final = []
+        finalBinary.append(binaryResult)
 
-        for byte in sublists:
-            for bit in byte:
-                final.append(bit)
-              
-        return final
+    #flatten binary lists
+    for byte in finalBinary:
+        for bit in byte:
+            cleanBinary.append(bit)
 
-    else:
-        print("Binary to Text")
-        #binary -> text
-        dataL = []
-        data = ""
-        storedMultiple = binToDec(info)
+    print(f"{text} to {finalBinary}")
 
-        #convert decimals to chars
-        for index, mul in enumerate(storedMultiple):
-            for l, v in char_map.items():
-                if v == storedMultiple[index]:
-                    dataL.append(l)
+    return cleanBinary
 
-        #join chars
-        for letter in dataL:
-            data += str(letter)
+def binToText(bits):
+    print("Binary to Text")
+    #binary -> text
+    dataL = []
+    data = ""
+    storedMultiple = binToDec(bits)
 
-        print(f"{info} to {data}")
-        return data
+    #convert decimals to chars
+    for mul in storedMultiple:
+        for l, v in char_map.items():
+            if v == mul:
+                dataL.append(l)
+
+    #join chars
+    for letter in dataL:
+        data += str(letter)
+
+    print(f"{bits} to {data}")
+    return data
+
+def addParity(bits):
+    blocos = []
+
+    #split into 8-bit blocks
+    for i in range(0, len(bits), 8):
+        blocos.append(bits[i : i + 8])
+
+    #one parity bit per block
+    for bloco in blocos:
+        parityCounter = 0
+        for bit in bloco:
+            if bit == 1:
+                parityCounter += 1
+        if parityCounter % 2 == 0:
+            bloco.append(0)
+        else:
+            bloco.append(1)
+
+    withParity = []
+
+    for bloco in blocos:
+        for bit in bloco:
+            withParity.append(bit)
+
+    return withParity
+
+def checkParity(bits):
+    blocos = []
+
+    #split into 9-bit blocks
+    for i in range(0, len(bits), 9):
+        blocos.append(bits[i : i + 9])
+
+    #check everything before building anything
+    for i, bloco in enumerate(blocos):
+        parityCounter = 0
+        for bit in bloco:
+            if bit == 1:
+                parityCounter += 1
+        if parityCounter % 2 != 0:
+            print(f"ERROR Parity Broken in byte {i}")
+            return [], False
+
+    cleanBits = []
+
+    #drop the parity bit
+    for bloco in blocos:
+        for bit in bloco[:8]:
+            cleanBits.append(bit)
+
+    return cleanBits, True
 
 def startClock():
     print("Clock - Init")
     global cable
     lastSeq = []
     time.sleep(tick / 2)
-    data = []
 
-    #state 0
-    print("Clock - State 0")
-    while not (lastSeq == startSeq):
-        time.sleep(tick)
-        lastSeq.append(cable)
+    totalTicks = 0 #test only, the protocol has no total limit
 
-        #keep only the last 8
-        if len(lastSeq) > 8:
-            lastSeq.pop(0)
-    print(f"Clock - Sequence read: {lastSeq}")
+    while totalTicks < maxTicks:
+        #state 0
+        print("Clock - State 0")
+        while not (lastSeq == startSeq) and totalTicks < maxTicks:
+            time.sleep(tick)
+            totalTicks += 1
+            lastSeq.append(cable)
 
-    print("Clock - State 1")
-    #state 1
-    SizeBinary = []
+            #keep only the last 8
+            if len(lastSeq) > 8:
+                lastSeq.pop(0)
 
-    #read data size
-    for i in range(8):
-        time.sleep(tick)
-        SizeBinary.append(cable)
+        if not (lastSeq == startSeq):
+            break #test only
 
-    size = binToDec(SizeBinary)[0]
+        print(f"Clock - Sequence read: {lastSeq}")
+        lastSeq = []
 
-    print(f"Clock - Data size: {size}")
+        print("Clock - State 1")
+        #state 1
+        sizeBinary = []
+        waited = 0
 
-    print("Clock - State 2")
-    #state 2
-    #read actual data
-    for i in range(size*9):
-        time.sleep(tick)
-        data.append(cable)
+        #read data size
+        while len(sizeBinary) < 8:
+            if waited >= waitLimit or totalTicks >= maxTicks:
+                print("Clock - State 1 timeout, dropping frame")
+                break
+            time.sleep(tick)
+            totalTicks += 1
+            waited += 1
+            sizeBinary.append(cable)
 
-    polishedData = []
+        if len(sizeBinary) < 8:
+            continue
 
-    for i in range(0, len(data), 9):
-        byte = data[i : i + 9]
-        polishedData.append(byte)
+        size = binToDec(sizeBinary)[0]
 
-    for i, byte in enumerate(polishedData):
-        parityCounter = 0
-        for bit in byte:
-            if bit == 1:
-                parityCounter += 1
-        if parityCounter % 2 == 0:
-            byte.pop(8)
-        else:
-            print(f"ERROR Parity Broken in byte {i}")
+        print(f"Clock - Data size: {size}")
 
-    finalCleanBits = []
+        print("Clock - State 2")
+        #state 2
+        #read actual data
+        frameBits = []
+        waited = 0
 
-    for byte in polishedData:
-        for bit in byte:
-            finalCleanBits.append(bit)
+        while len(frameBits) < size * 9:
+            if waited >= waitLimit or totalTicks >= maxTicks:
+                print("Clock - State 2 timeout, dropping frame")
+                break
+            time.sleep(tick)
+            totalTicks += 1
+            waited += 1
+            frameBits.append(cable)
 
-    print(f"Clock - Data: {finalCleanBits}")
-    return finalCleanBits
+        if len(frameBits) < size * 9:
+            continue
+
+        finalCleanBits, ok = checkParity(frameBits)
+
+        if not ok:
+            print("Clock - Frame dropped, nothing decoded")
+            return []
+
+        print(f"Clock - Data: {finalCleanBits}")
+        return finalCleanBits
+
+    print("Clock - Tick limit reached") #test only
+    return []
 
 def sendData(data):
     print("Sender - Init")
@@ -204,8 +251,6 @@ def sendData(data):
     for bit in startSeq:
         cable = CreateBit(bit)
         time.sleep(tick)
-
-    print(f"Sender - Sent StartSeq: {startSeq}")
 
     print("Sender - Size")
     #size
@@ -234,11 +279,14 @@ def transmit(data):
 
     binary = res.result()
 
-    return ASCIIConv(binary, False)
+    if binary == []:
+        return ""
+
+    return binToText(binary)
 
 def test():
     print("Start")
-    bin = ASCIIConv(testString, True)
-    return transmit(bin)
+    bin = textToBin(testString)
+    return transmit(addParity(bin))
     
 print(test())
