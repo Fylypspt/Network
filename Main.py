@@ -1,20 +1,33 @@
-from cons import char_map, multiples, tick, maxBits
+from cons import char_map, multiples, tick
 from concurrent.futures import ThreadPoolExecutor
 import time
 import random
+import threading
 
-DEBUG = True
+cable_lock = threading.Lock()
+
+DEBUG = False
 testString = "Hey"
-recData = []
 
-startSeq = [1,1,1,1,1,1,1,1]
+startSeq = [1, 1, 1, 1, 1, 1, 1, 1]
 
-maxTicks = 200 #test only, the protocol has no total limit
+noiseChance = 0.05
+maxTicks = 200      # test only, the protocol has no total limit
 
 cable = 0
 
+ErrorMsgs = [
+    "Clock - Tick limit reached",
+    "Clock - Frame dropped, nothing decoded",
+]
+
+ErrorCounter = {
+    "Clock - Tick limit reached": 0,
+    "Clock - Frame dropped, nothing decoded": 0,
+}
+
 def CreateBit(data):
-    if random.random() <= 0.05:
+    if random.random() <= noiseChance:
         if DEBUG:
             print("Noise")
         if data == 0:
@@ -26,7 +39,7 @@ def CreateBit(data):
         return data
 
 def binToDec(bin):
-    #split into 8-bit blocks
+    # split into 8-bit blocks
     finalbin = []
     for i in range(0, len(bin), 8):
         bloco = bin[i:i+8]
@@ -34,33 +47,33 @@ def binToDec(bin):
 
     storedMultiple = []
 
-    #convert each block to decimal
+    # convert each block to decimal
     for letter in finalbin:
         firstMulti = []
         for i, val in enumerate(letter):
-            if val == 1:                    
+            if val == 1:
                 firstMulti.append(multiples[i])
         storedMultiple.append(sum(firstMulti))
 
     return storedMultiple
 
-def decToBin(dec): #!!!
+def decToBin(dec):
     binary = []
-    
-    #build binary big to small
+
+    # build binary big to small
     for mult in multiples:
         if dec >= mult:
             binary.append(1)
             dec -= mult
         else:
             binary.append(0)
-            
+
     return binary
 
 def textToBin(text):
     if DEBUG:
         print("Text to Binary")
-    #text -> binary
+    # text -> binary
     letters = list(text)
     finalBinary = []
     cleanBinary = []
@@ -69,7 +82,7 @@ def textToBin(text):
         decimal_num = char_map[letter]
         binaryResult = []
 
-        #convert char to 8-bit binary
+        # convert char to 8-bit binary
         for v in multiples:
             if decimal_num >= v:
                 binaryResult.append(1)
@@ -79,7 +92,7 @@ def textToBin(text):
 
         finalBinary.append(binaryResult)
 
-    #flatten binary lists
+    # flatten binary lists
     for byte in finalBinary:
         for bit in byte:
             cleanBinary.append(bit)
@@ -92,18 +105,18 @@ def textToBin(text):
 def binToText(bits):
     if DEBUG:
         print("Binary to Text")
-    #binary -> text
+    # binary -> text
     dataL = []
     data = ""
     storedMultiple = binToDec(bits)
 
-    #convert decimals to chars
+    # convert decimals to chars
     for mul in storedMultiple:
         for l, v in char_map.items():
             if v == mul:
                 dataL.append(l)
 
-    #join chars
+    # join chars
     for letter in dataL:
         data += str(letter)
 
@@ -114,11 +127,11 @@ def binToText(bits):
 def addParity(bits):
     blocos = []
 
-    #split into 8-bit blocks
+    # split into 8-bit blocks
     for i in range(0, len(bits), 8):
         blocos.append(bits[i : i + 8])
 
-    #one parity bit per block
+    # one parity bit per block
     for bloco in blocos:
         parityCounter = 0
         for bit in bloco:
@@ -140,11 +153,11 @@ def addParity(bits):
 def checkParity(bits):
     blocos = []
 
-    #split into 9-bit blocks
+    # split into 9-bit blocks
     for i in range(0, len(bits), 9):
         blocos.append(bits[i : i + 9])
 
-    #check everything before building anything
+    # check everything before building anything
     for i, bloco in enumerate(blocos):
         parityCounter = 0
         for bit in bloco:
@@ -157,7 +170,7 @@ def checkParity(bits):
 
     cleanBits = []
 
-    #drop the parity bit
+    # drop the parity bit
     for bloco in blocos:
         for bit in bloco[:8]:
             cleanBits.append(bit)
@@ -169,25 +182,29 @@ def startClock():
         print("Clock - Init")
     global cable
     lastSeq = []
+
+    # half tick offset: sample in the middle of the bit, not on the transition
     time.sleep(tick / 2)
 
-    totalTicks = 0 #test only, the protocol has no total limit
+    totalTicks = 0  # test only, the protocol has no total limit
 
     while totalTicks < maxTicks:
-        #state 0
+        # state 0
         if DEBUG:
             print("Clock - State 0")
         while not (lastSeq == startSeq) and totalTicks < maxTicks:
             time.sleep(tick)
             totalTicks += 1
-            lastSeq.append(cable)
+            with cable_lock:
+                value = cable
+            lastSeq.append(value)
 
-            #keep only the last 8
+            # keep only the last 8
             if len(lastSeq) > 8:
                 lastSeq.pop(0)
 
         if not (lastSeq == startSeq):
-            break #test only
+            break  # test only
 
         if DEBUG:
             print(f"Clock - Sequence read: {lastSeq}")
@@ -195,13 +212,13 @@ def startClock():
 
         if DEBUG:
             print("Clock - State 1")
-        #state 1
+        # state 1
         sizeBinary = []
         waited = 0
 
         waitLimit = 15
 
-        #read data size
+        # read data size
         while len(sizeBinary) < 8:
             if waited >= waitLimit or totalTicks >= maxTicks:
                 if DEBUG:
@@ -210,7 +227,8 @@ def startClock():
             time.sleep(tick)
             totalTicks += 1
             waited += 1
-            sizeBinary.append(cable)
+            with cable_lock:
+                sizeBinary.append(cable)
 
         if len(sizeBinary) < 8:
             continue
@@ -222,8 +240,8 @@ def startClock():
 
         if DEBUG:
             print("Clock - State 2")
-        #state 2
-        #read actual data
+        # state 2
+        # read actual data
         frameBits = []
         waited = 0
 
@@ -237,7 +255,8 @@ def startClock():
             time.sleep(tick)
             totalTicks += 1
             waited += 1
-            frameBits.append(cable)
+            with cable_lock:
+                frameBits.append(cable)
 
         if len(frameBits) < size * 9:
             continue
@@ -247,53 +266,59 @@ def startClock():
         if not ok:
             if DEBUG:
                 print("Clock - Frame dropped, nothing decoded")
-            return []
+            return "Clock - Frame dropped, nothing decoded"
 
         if DEBUG:
             print(f"Clock - Data: {finalCleanBits}")
         return finalCleanBits
 
     if DEBUG:
-        print("Clock - Tick limit reached") #test only
-    return []
+        print("Clock - Tick limit reached")  # test only
+    return "Clock - Tick limit reached"
+
+def writeBit(bit):
+    global cable
+    with cable_lock:
+        cable = CreateBit(bit)
+    time.sleep(tick)
 
 def sendData(data):
     if DEBUG:
         print("Sender - Init")
     global cable
 
-    time.sleep(tick * 10) #testing silence
+    time.sleep(tick * 10)  # testing silence
 
     if DEBUG:
         print("Sender - Sending")
-    #start
+
+    # start
     for bit in startSeq:
-        cable = CreateBit(bit)
-        time.sleep(tick)
+        writeBit(bit)
 
     if DEBUG:
         print("Sender - Size")
-    #size
-    binarySize = decToBin(int(len(data)//9))
+    # size
+    binarySize = decToBin(len(data) // 9)
 
     if DEBUG:
         print(f"Sender - Sent Size: {binarySize}")
 
     for bit in binarySize:
-        cable = CreateBit(bit)
-        time.sleep(tick)
+        writeBit(bit)
 
     if DEBUG:
         print("Sender - Data")
-    #data
+    # data
     for bit in data:
-        cable = CreateBit(bit)
-        time.sleep(tick)
+        writeBit(bit)
+
     if DEBUG:
         print(f"Sender - Sent Data: {data}")
 
-    #reset cable
-    cable = 0
+    # reset cable
+    with cable_lock:
+        cable = 0
 
 def transmit(data):
     with ThreadPoolExecutor() as executor:
@@ -302,8 +327,8 @@ def transmit(data):
 
     binary = res.result()
 
-    if binary == []:
-        return ""
+    if binary in ErrorMsgs:
+        return binary
 
     return binToText(binary)
 
@@ -312,5 +337,11 @@ def test():
         print("Start")
     bin = textToBin(testString)
     return transmit(addParity(bin))
-    
-print(test())
+
+for i in range(500):
+    result = test()
+    print(f"{i + 1}: {result}")
+    if result in ErrorCounter:
+        ErrorCounter[result] += 1
+
+print(f"Errors Encountered: {ErrorCounter}")

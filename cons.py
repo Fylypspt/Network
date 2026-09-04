@@ -1,4 +1,4 @@
-tick = 0.1
+tick = 0.02
 maxBits = 40
 
 multiples = [128, 64, 32, 16, 8, 4, 2, 1]
