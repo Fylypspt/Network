@@ -16,14 +16,18 @@ maxTicks = 200      # test only, the protocol has no total limit
 
 cable = 0
 
-ErrorMsgs = [
-    "Clock - Tick limit reached",
+DebugMsgs = [
+    "Clock - Tick limit reached: Preamble never found",
+    "Clock - Tick limit reached: Frame abandoned mid-transmission",
     "Clock - Frame dropped, nothing decoded",
 ]
 
-ErrorCounter = {
-    "Clock - Tick limit reached": 0,
+DebugCounter = {
+    "Clock - Tick limit reached: Preamble never found": 0,
+    "Clock - Tick limit reached: Frame abandoned mid-transmission": 0,
     "Clock - Frame dropped, nothing decoded": 0,
+    "Hey": 0, #!!!!!!!
+    "Undetected corruption": 0,
 }
 
 def CreateBit(data):
@@ -109,12 +113,14 @@ def binToText(bits):
     dataL = []
     data = ""
     storedMultiple = binToDec(bits)
+    inv_char_map = {v: k for k, v in char_map.items()}
 
     # convert decimals to chars
     for mul in storedMultiple:
-        for l, v in char_map.items():
-            if v == mul:
-                dataL.append(l)
+        if mul in inv_char_map:
+            dataL.append(inv_char_map[mul])
+        else:
+            dataL.append("?")
 
     # join chars
     for letter in dataL:
@@ -187,6 +193,7 @@ def startClock():
     time.sleep(tick / 2)
 
     totalTicks = 0  # test only, the protocol has no total limit
+    preambleFound = False
 
     while totalTicks < maxTicks:
         # state 0
@@ -209,6 +216,7 @@ def startClock():
         if DEBUG:
             print(f"Clock - Sequence read: {lastSeq}")
         lastSeq = []
+        preambleFound = True
 
         if DEBUG:
             print("Clock - State 1")
@@ -274,7 +282,11 @@ def startClock():
 
     if DEBUG:
         print("Clock - Tick limit reached")  # test only
-    return "Clock - Tick limit reached"
+        
+    if preambleFound:
+        return "Clock - Tick limit reached: Frame abandoned mid-transmission"
+    else:
+        return "Clock - Tick limit reached: Preamble never found"
 
 def writeBit(bit):
     global cable
@@ -327,7 +339,7 @@ def transmit(data):
 
     binary = res.result()
 
-    if binary in ErrorMsgs:
+    if binary in DebugMsgs:
         return binary
 
     return binToText(binary)
@@ -338,10 +350,31 @@ def test():
     bin = textToBin(testString)
     return transmit(addParity(bin))
 
-for i in range(500):
+startT = 0
+endT = 0
+
+rg = 100
+corruptedResults = []
+
+for i in range(rg):
+    startT = time.perf_counter()
     result = test()
     print(f"{i + 1}: {result}")
-    if result in ErrorCounter:
-        ErrorCounter[result] += 1
 
-print(f"Errors Encountered: {ErrorCounter}")
+    if i == 1:
+        endT = time.perf_counter()
+        elapsed = endT - startT
+        
+        estSec = elapsed * rg
+        estMin = estSec / 60
+        
+        print(f"Estimate: {round(estMin, 2)} min")
+
+    if result in DebugCounter:
+        DebugCounter[result] += 1
+    elif result not in DebugMsgs and result != testString:
+        DebugCounter["Undetected corruption"] += 1
+        corruptedResults.append(result)
+
+print(f"Errors Encountered: {DebugCounter}")
+print(f"Corrupted Results: {corruptedResults}")
