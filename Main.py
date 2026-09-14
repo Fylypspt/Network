@@ -11,7 +11,11 @@ testString = "Hey"
 
 startSeq = [1, 1, 1, 1, 1, 1, 1, 1]
 
-noiseChance = 0.05
+#addresses:
+adressSize = 4
+broadcast = [1,1,1,1]
+
+noiseChance = 0 #.05
 maxTicks = 200      # test only, the protocol has no total limit
 
 cable = 0
@@ -183,110 +187,160 @@ def checkParity(bits):
 
     return cleanBits, True
 
-def startClock():
-    if DEBUG:
-        print("Clock - Init")
-    global cable
-    lastSeq = []
+#--------------------------------------------------------------
 
-    # half tick offset: sample in the middle of the bit, not on the transition
-    time.sleep(tick / 2)
-
-    totalTicks = 0  # test only, the protocol has no total limit
-    preambleFound = False
-
-    while totalTicks < maxTicks:
-        # state 0
+class clock:
+    def __init__(self, Name, Address):
+        self.Name = Name
+        self.Address = Address
+    def execute(self):
         if DEBUG:
-            print("Clock - State 0")
-        while not (lastSeq == startSeq) and totalTicks < maxTicks:
-            time.sleep(tick)
-            totalTicks += 1
-            with cable_lock:
-                value = cable
-            lastSeq.append(value)
-
-            # keep only the last 8
-            if len(lastSeq) > 8:
-                lastSeq.pop(0)
-
-        if not (lastSeq == startSeq):
-            break  # test only
-
-        if DEBUG:
-            print(f"Clock - Sequence read: {lastSeq}")
+            print("Clock - Init")
+        global cable
         lastSeq = []
-        preambleFound = True
-
-        if DEBUG:
-            print("Clock - State 1")
-        # state 1
-        sizeBinary = []
-        waited = 0
-
-        waitLimit = 15
-
-        # read data size
-        while len(sizeBinary) < 8:
-            if waited >= waitLimit or totalTicks >= maxTicks:
-                if DEBUG:
-                    print("Clock - State 1 timeout, dropping frame")
-                break
-            time.sleep(tick)
-            totalTicks += 1
-            waited += 1
-            with cable_lock:
-                sizeBinary.append(cable)
-
-        if len(sizeBinary) < 8:
-            continue
-
-        size = binToDec(sizeBinary)[0]
-
-        if DEBUG:
-            print(f"Clock - Data size: {size}")
-
-        if DEBUG:
-            print("Clock - State 2")
-        # state 2
-        # read actual data
-        frameBits = []
-        waited = 0
-
-        waitLimit = size * 9 + 50
-
-        while len(frameBits) < size * 9:
-            if waited >= waitLimit or totalTicks >= maxTicks:
-                if DEBUG:
-                    print("Clock - State 2 timeout, dropping frame")
-                break
-            time.sleep(tick)
-            totalTicks += 1
-            waited += 1
-            with cable_lock:
-                frameBits.append(cable)
-
-        if len(frameBits) < size * 9:
-            continue
-
-        finalCleanBits, ok = checkParity(frameBits)
-
-        if not ok:
+    
+        # half tick offset: sample in the middle of the bit, not on the transition
+        time.sleep(tick / 2)
+    
+        totalTicks = 0  # test only, the protocol has no total limit
+        preambleFound = False
+    
+        while totalTicks < maxTicks:
+            # state 0
             if DEBUG:
-                print("Clock - Frame dropped, nothing decoded")
-            return "Clock - Frame dropped, nothing decoded"
-
+                print("Clock - State 0")
+            while not (lastSeq == startSeq) and totalTicks < maxTicks:
+                time.sleep(tick)
+                totalTicks += 1
+                with cable_lock:
+                    value = cable
+                lastSeq.append(value)
+    
+                # keep only the last 8
+                if len(lastSeq) > 8:
+                    lastSeq.pop(0)
+    
+            if not (lastSeq == startSeq):
+                break  # test only
+    
+            if DEBUG:
+                print(f"Clock - Sequence read: {lastSeq}")
+            lastSeq = []
+            preambleFound = True
+    
+            # state 1
+            if DEBUG:
+                print("Clock - State 1")
+    
+            origin = []
+            end = []
+            waitLimit = 10
+            waited = 0
+    
+            while len(end) < adressSize:
+                if waited >= waitLimit or totalTicks >= maxTicks:
+                    if DEBUG:
+                        print("Test1")
+                    break
+                time.sleep(tick)
+                totalTicks += 1
+                waited += 1
+                with cable_lock:
+                    end.append(cable)
+    
+            waited = 0
+    
+            while len(origin) < adressSize:
+                if waited >= waitLimit or totalTicks >= maxTicks:
+                    if DEBUG:
+                        print("Test2")
+                    break   
+                time.sleep(tick)
+                totalTicks += 1
+                waited += 1
+                with cable_lock:
+                    origin.append(cable)
+    
+            if not (end == self.Address or end == broadcast):
+                if DEBUG:
+                    print(f"end: {end}")
+                    print(f"org: {origin}")
+                    print("Wrong Address")
+                continue
+            else:
+                if DEBUG:
+                    print("Right address")
+            # state 2
+            if DEBUG:
+                print("Clock - State 2")
+            sizeBinary = []
+            waited = 0
+    
+            waitLimit = 15
+    
+            # read data size
+            while len(sizeBinary) < 8:
+                if waited >= waitLimit or totalTicks >= maxTicks:
+                    if DEBUG:
+                        print("Clock - State 1 timeout, dropping frame")
+                    break
+                time.sleep(tick)
+                totalTicks += 1
+                waited += 1
+                with cable_lock:
+                    sizeBinary.append(cable)
+    
+            if len(sizeBinary) < 8:
+                continue
+    
+            size = binToDec(sizeBinary)[0]
+    
+            if DEBUG:
+                print(f"Clock - Data size: {size}")
+    
+            # state 3
+            if DEBUG:
+                print("Clock - State 3")
+            # read actual data
+            frameBits = []
+            waited = 0
+    
+            waitLimit = size * 9 + 50
+    
+            while len(frameBits) < size * 9:
+                if waited >= waitLimit or totalTicks >= maxTicks:
+                    if DEBUG:
+                        print("Clock - State 2 timeout, dropping frame")
+                    break
+                time.sleep(tick)
+                totalTicks += 1
+                waited += 1
+                with cable_lock:
+                    frameBits.append(cable)
+    
+            if len(frameBits) < size * 9:
+                continue
+    
+            finalCleanBits, ok = checkParity(frameBits)
+    
+            if not ok:
+                if DEBUG:
+                    print("Clock - Frame dropped, nothing decoded")
+                return "Clock - Frame dropped, nothing decoded"
+    
+            if DEBUG:
+                print(f"Clock - Data: {finalCleanBits}")
+            return finalCleanBits
+    
         if DEBUG:
-            print(f"Clock - Data: {finalCleanBits}")
-        return finalCleanBits
+            print("Clock - Tick limit reached")  # test only
+            
+        # if preambleFound:
+        #     return "Clock - Tick limit reached: Frame abandoned mid-transmission"
+        # else:
+        #     return "Clock - Tick limit reached: Preamble never found"
 
-    if DEBUG:
-        print("Clock - Tick limit reached")  # test only
-        
-    if preambleFound:
-        return "Clock - Tick limit reached: Frame abandoned mid-transmission"
-    else:
-        return "Clock - Tick limit reached: Preamble never found"
+#--------------------------------------------------------------
 
 def writeBit(bit):
     global cable
@@ -294,7 +348,7 @@ def writeBit(bit):
         cable = CreateBit(bit)
     time.sleep(tick)
 
-def sendData(data):
+def sendData(data, end, org):
     if DEBUG:
         print("Sender - Init")
     global cable
@@ -308,9 +362,21 @@ def sendData(data):
     for bit in startSeq:
         writeBit(bit)
 
+    #endpoint
+    if DEBUG:
+        print("EndPoint")
+    for bit in end:
+        writeBit(bit)
+
+    # originpoint
+    if DEBUG:
+        print("Origin")
+    for bit in org:
+        writeBit(bit)
+
+    # size
     if DEBUG:
         print("Sender - Size")
-    # size
     binarySize = decToBin(len(data) // 9)
 
     if DEBUG:
@@ -332,49 +398,78 @@ def sendData(data):
     with cable_lock:
         cable = 0
 
-def transmit(data):
+def transmit(data, end1, end2):
+    casa1 = clock("Casa1", [0,0,0,1])
+    casa2 = clock("Casa2", [0,0,1,1])
+    casa3 = clock("Casa3", [0,1,1,1])
+
+    threads = [
+        casa1.execute,
+        casa2.execute,
+        casa3.execute
+    ]
+
+    results = []
+
     with ThreadPoolExecutor() as executor:
-        res = executor.submit(startClock)
-        executor.submit(sendData, data)
+        for task in threads:
+            res = executor.submit(task)
+            results.append(res)
+        executor.submit(sendData, data, end1, end2)
 
-    binary = res.result()
+    final = []
 
-    if binary in DebugMsgs:
-        return binary
+    for res in results:
+        final.append(res.result())
 
-    return binToText(binary)
+    return final
 
-def test():
+def test(end1, end2):
     if DEBUG:
         print("Start")
+
     bin = textToBin(testString)
-    return transmit(addParity(bin))
+    return transmit(addParity(bin), end1, end2)
 
 startT = 0
 endT = 0
 
-rg = 100
+rg = 1
 corruptedResults = []
 
 for i in range(rg):
     startT = time.perf_counter()
-    result = test()
-    print(f"{i + 1}: {result}")
+    result = test([0,0,0,1], [0,0,1,1])
 
-    if i == 1:
-        endT = time.perf_counter()
-        elapsed = endT - startT
+    for i in range(len(result)):
+        if result[i] is not None:
+            print(binToText(result[i]))
+        else:
+            print(result[i])
+
+    #----------------------------------------
+#     print(f"{i + 1}: {result}")
+
+#     if i == 1:
+#         endT = time.perf_counter()
+#         elapsed = endT - startT
         
-        estSec = elapsed * rg
-        estMin = estSec / 60
+#         estSec = elapsed * rg
+#         estMin = estSec / 60
         
-        print(f"Estimate: {round(estMin, 2)} min")
+#         print(f"Estimate: {round(estMin, 2)} min")
 
-    if result in DebugCounter:
-        DebugCounter[result] += 1
-    elif result not in DebugMsgs and result != testString:
-        DebugCounter["Undetected corruption"] += 1
-        corruptedResults.append(result)
+#     if result in DebugCounter:
+#         DebugCounter[result] += 1
+#     elif result not in DebugMsgs and result != testString:
+#         DebugCounter["Undetected corruption"] += 1
+#         corruptedResults.append(result)
 
-print(f"Errors Encountered: {DebugCounter}")
-print(f"Corrupted Results: {corruptedResults}")
+# print("\nErrors Encountered:")
+
+# for error, count in DebugCounter.items():
+#     print(f"{error:<35} {count:>7}")
+
+# print("\nCorrupted Results:")
+# for result in corruptedResults:
+#     print(result)
