@@ -15,7 +15,7 @@ startSeq = [1, 1, 1, 1, 1, 1, 1, 1]
 adressSize = 4
 broadcast = [1,1,1,1]
 
-noiseChance = 0 #.05
+noiseChance = 0 #0.05
 maxTicks = 200      # test only, the protocol has no total limit
 
 cable = 0
